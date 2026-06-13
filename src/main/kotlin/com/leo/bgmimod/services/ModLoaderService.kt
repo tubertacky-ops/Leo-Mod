@@ -6,6 +6,7 @@ import android.os.IBinder
 import android.util.Log
 import com.leo.bgmimod.features.ESP
 import com.leo.bgmimod.features.Aimbot
+import com.leo.bgmimod.hooks.GameHooks
 
 class ModLoaderService : Service() {
     private var esp: ESP? = null
@@ -19,6 +20,13 @@ class ModLoaderService : Service() {
 
     private fun initializeMods() {
         try {
+            // Initialize game hooks
+            GameHooks.hookRenderingPipeline()
+            GameHooks.hookCameraSystem()
+            GameHooks.hookInputSystem()
+            GameHooks.hookPlayerDataAccess()
+            
+            // Initialize ESP and Aimbot
             esp = ESP(this)
             aimbot = Aimbot(this)
             Log.d("ModLoaderService", "ESP and Aimbot initialized")

@@ -2,60 +2,84 @@ package com.leo.bgmimod.features
 
 import android.content.Context
 import android.util.Log
+import com.leo.bgmimod.game.GameMemoryReader
+kotlin.concurrent.thread
 import kotlin.math.*
 
 class Aimbot(private val context: Context) {
     private var isEnabled = false
     private var targetPlayer: String? = null
-    private var aimSpeed = 1.0f // 0.0 - 1.0, lower = smoother
-    private var maxDistance = 100f // Maximum distance to target in meters
+    private var aimSpeed = 0.5f // 0.0 - 1.0, lower = smoother
+    private var maxDistance = 200f // Maximum distance to target in meters
     private var aimAssistOnly = true // If true, only assists aiming
+    private val memoryReader = GameMemoryReader()
+    private var currentCamera: GameMemoryReader.CameraData? = null
+    private var allPlayers = mutableListOf<GameMemoryReader.PlayerData>()
+
+    companion object {
+        private const val TAG = "Aimbot"
+    }
 
     fun enable() {
+        if (isEnabled) return
         isEnabled = true
-        Log.d("Aimbot", "Aimbot feature enabled")
-        startAimbotLoop()
+        Log.d(TAG, "Aimbot feature enabled")
+        
+        if (memoryReader.initialize()) {
+            startAimbotLoop()
+        } else {
+            Log.e(TAG, "Failed to initialize memory reader")
+        }
     }
 
     fun disable() {
         isEnabled = false
-        Log.d("Aimbot", "Aimbot feature disabled")
+        Log.d(TAG, "Aimbot feature disabled")
     }
 
     fun setTargetPlayer(name: String) {
         targetPlayer = name
-        Log.d("Aimbot", "Target set to: $name")
+        Log.d(TAG, "Target set to: $name")
     }
 
     fun setAimSpeed(speed: Float) {
         aimSpeed = speed.coerceIn(0f, 1f)
-        Log.d("Aimbot", "Aim speed set to: $aimSpeed")
+        Log.d(TAG, "Aim speed set to: $aimSpeed")
     }
 
     fun setMaxDistance(distance: Float) {
         maxDistance = distance
-        Log.d("Aimbot", "Max distance set to: $distance")
+        Log.d(TAG, "Max distance set to: $distance")
     }
 
     fun setAimAssistOnly(value: Boolean) {
         aimAssistOnly = value
-        Log.d("Aimbot", "Aim assist only: $value")
+        Log.d(TAG, "Aim assist only: $value")
     }
 
     private fun startAimbotLoop() {
-        Thread {
+        thread {
+            memoryReader.startMonitoring()
+            
             while (isEnabled) {
                 try {
                     updateAim()
                     Thread.sleep(16) // ~60 FPS
                 } catch (e: Exception) {
-                    Log.e("Aimbot", "Aimbot loop error", e)
+                    Log.e(TAG, "Aimbot loop error", e)
                 }
             }
-        }.start()
+        }
     }
 
     private fun updateAim() {
+        // Get current players
+        allPlayers.clear()
+        allPlayers.addAll(memoryReader.getPlayerPositions())
+        
+        // Get current camera position
+        currentCamera = memoryReader.getPlayerCamera() ?: return
+        
         // Get nearest enemy within range
         val nearestEnemy = getNearestEnemy() ?: return
         
@@ -69,21 +93,39 @@ class Aimbot(private val context: Context) {
         applyAim(smoothedAngles)
     }
 
-    private fun getNearestEnemy(): PlayerPosition? {
-        // Get visible enemies and return the nearest one
-        // This would use data from ESP or game memory
-        return null // Placeholder
+    private fun getNearestEnemy(): GameMemoryReader.PlayerData? {
+        if (allPlayers.isEmpty()) return null
+        
+        val camera = currentCamera ?: return null
+        var nearest: GameMemoryReader.PlayerData? = null
+        var nearestDistance = maxDistance
+
+        for (player in allPlayers) {
+            val dx = player.x - camera.x
+            val dy = player.y - camera.y
+            val dz = player.z - camera.z
+            val distance = sqrt(dx * dx + dy * dy + dz * dz)
+
+            if (distance < nearestDistance && distance > 0.1f) {
+                nearestDistance = distance
+                nearest = player
+            }
+        }
+
+        return nearest
     }
 
-    private fun calculateAngles(target: PlayerPosition): AimAngles {
-        val dx = target.x - getPlayerX()
-        val dy = target.y - getPlayerY()
-        val dz = target.z - getPlayerZ()
+    private fun calculateAngles(target: GameMemoryReader.PlayerData): AimAngles {
+        val camera = currentCamera ?: return AimAngles(0f, 0f)
+        
+        val dx = target.x - camera.x
+        val dy = target.y - camera.y
+        val dz = target.z - camera.z
 
         val distance = sqrt(dx * dx + dy * dy + dz * dz)
         
-        if (distance > maxDistance) {
-            return AimAngles(0f, 0f)
+        if (distance > maxDistance || distance < 0.1f) {
+            return AimAngles(camera.yaw, camera.pitch)
         }
 
         val yaw = atan2(dx, dz).toDegrees()
@@ -93,40 +135,29 @@ class Aimbot(private val context: Context) {
     }
 
     private fun applySmoothening(angles: AimAngles): AimAngles {
+        val camera = currentCamera ?: return angles
+        
         // Lerp between current aim and target aim based on aimSpeed
-        val currentYaw = getCurrentYaw()
-        val currentPitch = getCurrentPitch()
-
-        val smoothYaw = lerp(currentYaw, angles.yaw, aimSpeed)
-        val smoothPitch = lerp(currentPitch, angles.pitch, aimSpeed)
+        val smoothYaw = lerp(camera.yaw, angles.yaw, aimSpeed)
+        val smoothPitch = lerp(camera.pitch, angles.pitch, aimSpeed)
 
         return AimAngles(smoothYaw, smoothPitch)
     }
 
     private fun applyAim(angles: AimAngles) {
-        // Apply the calculated angles to the player's camera/aim
-        // This requires hooking into the game's camera system
-        Log.d("Aimbot", "Applying aim: yaw=${angles.yaw}, pitch=${angles.pitch}")
+        try {
+            memoryReader.updateCamera(angles.yaw, angles.pitch)
+            Log.d(TAG, "Applied aim: yaw=${angles.yaw}, pitch=${angles.pitch}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to apply aim", e)
+        }
     }
-
-    private fun getPlayerX(): Float = 0f // Placeholder
-    private fun getPlayerY(): Float = 0f // Placeholder
-    private fun getPlayerZ(): Float = 0f // Placeholder
-    private fun getCurrentYaw(): Float = 0f // Placeholder
-    private fun getCurrentPitch(): Float = 0f // Placeholder
 
     private fun lerp(a: Float, b: Float, t: Float): Float {
         return a + (b - a) * t
     }
 
     private fun Float.toDegrees(): Float = this * 180f / Math.PI.toFloat()
-
-    data class PlayerPosition(
-        val x: Float,
-        val y: Float,
-        val z: Float,
-        val name: String
-    )
 
     data class AimAngles(
         val yaw: Float,
