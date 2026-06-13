@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Leo Mod</string>
+    <string name="launch_bgmi">LAUNCH BGMI</string>
+    <string name="aimbot_enabled">Aimbot: ON</string>
+    <string name="aimbot_disabled">Aimbot: OFF</string>
 </resources>
