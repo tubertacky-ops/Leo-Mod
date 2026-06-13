@@ -11,7 +11,10 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.Switch
+import android.widget.TextView
 import com.leo.bgmimod.R
+import com.leo.bgmimod.features.Aimbot
+import com.leo.bgmimod.features.ESP
 
 class FloatingWindowService : Service() {
     private var windowManager: WindowManager? = null
@@ -23,6 +26,9 @@ class FloatingWindowService : Service() {
     private var initialTouchY = 0f
     private var aimbotEnabled = false
     private var espEnabled = false
+    private var aimbot: Aimbot? = null
+    private var esp: ESP? = null
+    private var tvStatus: TextView? = null
 
     companion object {
         private const val TAG = "FloatingWindowService"
@@ -56,18 +62,39 @@ class FloatingWindowService : Service() {
             // Add the view to window manager
             windowManager?.addView(floatingView, params)
 
-            // Setup switches
+            // Setup switches and status
             val switchAimbot = floatingView?.findViewById<Switch>(R.id.switch_aimbot)
             val switchESP = floatingView?.findViewById<Switch>(R.id.switch_esp)
+            tvStatus = floatingView?.findViewById<TextView>(R.id.tv_esp_status)
+
+            // Initialize features
+            aimbot = Aimbot(this)
+            esp = ESP(this)
 
             switchAimbot?.setOnCheckedChangeListener { _, isChecked ->
                 aimbotEnabled = isChecked
-                Log.d(TAG, "Aimbot: $isChecked")
+                if (isChecked) {
+                    aimbot?.enable()
+                    updateStatus("Aimbot ON")
+                    Log.d(TAG, "Aimbot enabled")
+                } else {
+                    aimbot?.disable()
+                    updateStatus("Aimbot OFF")
+                    Log.d(TAG, "Aimbot disabled")
+                }
             }
 
             switchESP?.setOnCheckedChangeListener { _, isChecked ->
                 espEnabled = isChecked
-                Log.d(TAG, "ESP: $isChecked")
+                if (isChecked) {
+                    esp?.enable()
+                    updateStatus("ESP ON")
+                    Log.d(TAG, "ESP enabled")
+                } else {
+                    esp?.disable()
+                    updateStatus("ESP OFF")
+                    Log.d(TAG, "ESP disabled")
+                }
             }
 
             // Make the window draggable
@@ -96,12 +123,27 @@ class FloatingWindowService : Service() {
         }
     }
 
+    private fun updateStatus(status: String) {
+        tvStatus?.text = "Status: $status"
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
         super.onDestroy()
+        // Clean up
+        if (aimbotEnabled) {
+            aimbot?.disable()
+        }
+        if (espEnabled) {
+            esp?.disable()
+        }
         if (floatingView != null) {
-            windowManager?.removeView(floatingView)
+            try {
+                windowManager?.removeView(floatingView)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error removing view", e)
+            }
             floatingView = null
         }
         Log.d(TAG, "Service destroyed")
