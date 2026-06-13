@@ -1,0 +1,4 @@
+-keep class com.leo.bgmimod.** { *; }
+-keepclassmembers class com.leo.bgmimod.** { *; }
+-dontwarn com.leo.bgmimod.**
+-dontobfuscate
